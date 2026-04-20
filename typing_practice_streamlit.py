@@ -33,7 +33,7 @@ except ImportError:
 USER_COLEMAK_LAYOUT = [
     ['q', 'w', 'f', 'p', 'b', 'j', 'l', 'u', 'y', None],
     ['a', 'r', 's', 't', 'g', 'm', 'n', 'e', 'i', 'o'],
-    ['x', 'c', 'd', 'v', 'z', 'k', 'h', None, None, None],
+    [None, 'x', 'c', 'd', 'v', 'z', 'k', 'h', None, None],
 ]
 
 QWERTY_LAYOUT = [
