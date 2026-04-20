@@ -33,7 +33,7 @@ except ImportError:
 USER_COLEMAK_LAYOUT = [
     ['q', 'w', 'f', 'p', 'b', 'j', 'l', 'u', 'y', None],
     ['a', 'r', 's', 't', 'g', 'm', 'n', 'e', 'i', 'o'],
-    [None, 'x', 'c', 'd', 'v', 'z', 'k', 'h', None, None],
+    ['x', 'c', 'd', 'v', 'z', 'k', 'h', None, None, None],
 ]
 
 QWERTY_LAYOUT = [
@@ -46,18 +46,23 @@ HOME_BUMPS = {(1, 3), (1, 6)}
 
 # 사용자 커스텀 Colemak (표준 Colemak-DH에서 아래줄만 다름)
 QWERTY_TO_USER_COLEMAK = {
+    # 윗줄 (표준 Colemak-DH와 동일)
     'q':'q','w':'w','e':'f','r':'p','t':'b',
     'y':'j','u':'l','i':'u','o':'y','p':';',
+    # 홈줄 (표준 Colemak-DH와 동일)
     'a':'a','s':'r','d':'s','f':'t','g':'g',
     'h':'m','j':'n','k':'e','l':'i',';':'o',
-    'x':'x','c':'c','v':'d','b':'v',
-    'n':'z','m':'k',',':'h',
+    # 아래줄 (사용자 배열: col 0부터 시작, 한 칸씩 왼쪽으로 shift)
+    # QWERTY:  z x c v b n m ,
+    # User:    x c d v z k h ,
+    'z':'x','x':'c','c':'d','v':'v','b':'z','n':'k','m':'h',
+    ',':',',
+    # Shift + letter (대문자 버전)
     'Q':'Q','W':'W','E':'F','R':'P','T':'B',
     'Y':'J','U':'L','I':'U','O':'Y','P':':',
     'A':'A','S':'R','D':'S','F':'T','G':'G',
     'H':'M','J':'N','K':'E','L':'I',':':'O',
-    'X':'X','C':'C','V':'D','B':'V',
-    'N':'Z','M':'K','<':'H',
+    'Z':'X','X':'C','C':'D','V':'V','B':'Z','N':'K','M':'H',
 }
 for _c in "1234567890!@#$%^&*()-_=+[]{}\\|\"'` ~\t\n":
     QWERTY_TO_USER_COLEMAK.setdefault(_c, _c)
