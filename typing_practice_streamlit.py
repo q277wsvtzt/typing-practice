@@ -16,6 +16,7 @@
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import random
 import time
 
@@ -298,6 +299,24 @@ h1.brand::before { content: '— '; color: var(--accent); }
     font-size: 0.8rem;
     margin-top: 8px;
 }
+
+/* Hide the st_keyup input box completely.
+   We capture keystrokes via JS auto-focus instead. */
+div.element-container:has(iframe[title*="keyup"]) {
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+iframe[title*="keyup"] {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 1px !important;
+    height: 1px !important;
+    opacity: 0 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -308,25 +327,29 @@ h1.brand::before { content: '— '; color: var(--accent); }
 
 if 'target' not in st.session_state:
     st.session_state.target = random.choice(SENTENCES)
-if 'input_key' not in st.session_state:
-    st.session_state.input_key = 0
+if 'typed_offset' not in st.session_state:
+    st.session_state.typed_offset = 0
+if 'advance_flag' not in st.session_state:
+    st.session_state.advance_flag = False
+if 'reset_flag' not in st.session_state:
+    st.session_state.reset_flag = False
 if 'start_time' not in st.session_state:
     st.session_state.start_time = None
 
 
 # =========================================================
 # Callbacks
+#
+# 버튼 콜백은 직접 상태 변경하지 않고 플래그만 세팅함.
+# 실제 처리는 main flow에서 raw_input을 읽은 후에 함
+# (offset 계산에 raw_input 길이가 필요하기 때문).
 # =========================================================
 
 def next_sentence():
-    candidates = [s for s in SENTENCES if s != st.session_state.target]
-    st.session_state.target = random.choice(candidates or SENTENCES)
-    st.session_state.input_key += 1
-    st.session_state.start_time = None
+    st.session_state.advance_flag = True
 
 def reset_sentence():
-    st.session_state.input_key += 1
-    st.session_state.start_time = None
+    st.session_state.reset_flag = True
 
 
 # =========================================================
@@ -351,30 +374,59 @@ mode = st.radio(
 
 # =========================================================
 # Input (real-time via streamlit-keyup)
+#
+# 핵심: key를 "typing_input"으로 고정해서 컴포넌트가 절대 remount 되지
+# 않게 함. 그러면 포커스가 유지되고, 입력창이 화면에 다시 나타나는
+# 문제가 없음. 대신 typed_offset으로 "가상 리셋" — 입력은 내부적으로
+# 누적되지만 offset 이후 부분만 현재 문장의 타이핑으로 간주.
 # =========================================================
 
 raw_input = st_keyup(
     "타이핑",
-    key=f"typing_{st.session_state.input_key}",
+    key="typing_input",  # 고정 key - 절대 바꾸지 않음
     label_visibility="collapsed",
-    placeholder="여기를 클릭하고 입력 시작...",
+    placeholder="",
     debounce=20,
 ) or ""
 
-# Apply mapping
-if mode == 'colemak-sw':
-    typed = ''.join(QWERTY_TO_USER_COLEMAK.get(c, c) for c in raw_input)
-else:
-    typed = raw_input
+# Backspace로 offset 이전까지 지운 경우 offset을 따라 내림
+if len(raw_input) < st.session_state.typed_offset:
+    st.session_state.typed_offset = len(raw_input)
 
-# Start timer on first keystroke
+# 버튼 플래그 처리 (콜백에서 raw_input을 참조할 수 없어 여기서 처리)
+if st.session_state.advance_flag:
+    st.session_state.advance_flag = False
+    st.session_state.typed_offset = len(raw_input)
+    candidates = [s for s in SENTENCES if s != st.session_state.target]
+    st.session_state.target = random.choice(candidates or SENTENCES)
+    st.session_state.start_time = None
+    st.rerun()
+
+if st.session_state.reset_flag:
+    st.session_state.reset_flag = False
+    st.session_state.typed_offset = len(raw_input)
+    st.session_state.start_time = None
+    st.rerun()
+
+# 현재 문장에 해당하는 입력만 추출
+current_input = raw_input[st.session_state.typed_offset:]
+
+# 모드별 매핑 적용
+if mode == 'colemak-sw':
+    typed = ''.join(QWERTY_TO_USER_COLEMAK.get(c, c) for c in current_input)
+else:
+    typed = current_input
+
+# 첫 키 입력 시 타이머 시작
 if typed and st.session_state.start_time is None:
     st.session_state.start_time = time.time()
 
-# 자동 진행: 문장 길이에 도달했으면 (정확도 무관) 다음 문장
-# 배포 환경에서 Enter JS 해킹이 불안정하므로 자동 진행을 기본 UX로 사용
+# 자동 진행: 목표 문장 길이 도달 시 다음 문장으로
 if typed and len(typed) >= len(st.session_state.target):
-    next_sentence()
+    st.session_state.typed_offset = len(raw_input)
+    candidates = [s for s in SENTENCES if s != st.session_state.target]
+    st.session_state.target = random.choice(candidates or SENTENCES)
+    st.session_state.start_time = None
     st.rerun()
 
 
@@ -473,6 +525,55 @@ st.markdown(f"<div class='footer-note'>{footer_text}</div>", unsafe_allow_html=T
 
 
 # =========================================================
-# 배포 호환을 위해 Enter 키 JS 해킹은 제거함.
-# 대신: (B) 문장 끝까지 치면 자동 진행 + (C) "다음 문장" 버튼으로 수동 스킵.
+# JS: 숨겨진 st_keyup 입력에 자동 포커스
+#
+# st_keyup은 숨겨놨지만 여전히 keystroke을 받아야 함.
+# 페이지 로드 시 · 주기적으로 · 페이지 클릭 시 iframe 내부 input에
+# focus를 강제로 주입. streamlit-keyup은 pip 설치 컴포넌트라 Streamlit
+# 서버가 같은 origin에서 iframe을 서빙하므로 contentDocument 접근 가능.
+# 혹시 cross-origin으로 막히면 iframe.focus()로 폴백.
 # =========================================================
+
+components.html("""
+<script>
+(function() {
+    const pwin = window.parent;
+    const pdoc = pwin.document;
+
+    const focusInput = () => {
+        const iframes = pdoc.querySelectorAll('iframe');
+        for (const iframe of iframes) {
+            if (!(iframe.title || '').includes('keyup')) continue;
+            try {
+                const idoc = iframe.contentDocument;
+                if (idoc) {
+                    const input = idoc.querySelector('input');
+                    if (input && idoc.activeElement !== input) {
+                        input.focus();
+                    }
+                }
+            } catch (e) {
+                try { iframe.focus(); } catch (e2) {}
+            }
+            return;
+        }
+    };
+
+    // 초기 포커스 (DOM 로딩 타이밍 차이 대비)
+    setTimeout(focusInput, 100);
+    setTimeout(focusInput, 400);
+    setTimeout(focusInput, 1000);
+
+    // 주기적 재포커스 (rerun 후에도 유지)
+    setInterval(focusInput, 400);
+
+    // 페이지 아무 데나 클릭해도 다시 포커스
+    pdoc.addEventListener('click', (e) => {
+        const tag = (e.target.tagName || '').toUpperCase();
+        if (['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'LABEL', 'A'].includes(tag)) return;
+        if (e.target.closest('button') || e.target.closest('label') || e.target.closest('a')) return;
+        setTimeout(focusInput, 50);
+    });
+})();
+</script>
+""", height=0)
